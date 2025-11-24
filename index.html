@@ -219,12 +219,7 @@
       const href = qsWith({ sort: s, order: o });
       return `<a href="${href}">${label}</a>`;
     };
-    const sep = ' · ';
-    const nameAsc  = link("Nome ↑", "name", "asc");
-    const nameDesc = link("Nome ↓", "name", "desc");
-    const dateDesc = link("Più recenti", "date", "desc");
-    const dateAsc  = link("Più vecchie", "date", "asc");
-    $sortLinks.innerHTML = [nameAsc, nameDesc, dateDesc, dateAsc].join(sep);
+
   }
 
   function renderList(files){
@@ -233,7 +228,7 @@
       $list.innerHTML = `
         <div class="center-wrap" role="region" aria-label="Logo galleria">
           <img class="logo" src="${logoSrc}" alt="Logo galleria" />
-          <div class="hint">Scegli una cartella dal menu per vedere le immagini. </div>
+          <div class="hint">Scegli una cartella dal menù. </div>
           <a class="open-menu" href="#" id="openMenuBtn">Apri cartelle</a>
         </div>
       `;
