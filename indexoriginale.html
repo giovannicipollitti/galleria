@@ -48,13 +48,6 @@
   .scrim.show { opacity:1; pointer-events:auto; }
 
   .warn { background:#3a2a00; color:#ffe2a6; border:1px solid #6b4e00; padding:.7rem .9rem; border-radius:10px; margin:1rem 0; }
-
-  /* ===== new styles for centered logo view ===== */
-  .center-wrap { display:flex; align-items:center; justify-content:center; min-height:60vh; gap:1rem; text-align:center; flex-direction:column; }
-  .center-wrap img.logo { max-width:40%; max-height:50vh; width:auto; height:auto; border-radius:12px; box-shadow:0 8px 30px #0008; }
-  .center-wrap .hint { color:var(--mut); font-size:0.95rem; }
-  .center-wrap .open-menu { border:1px solid #3a3a3a; background:#232323; color:#eee; padding:.5rem .9rem; border-radius:10px; cursor:pointer; text-decoration:none; }
-  .center-wrap .open-menu:hover { background:#2e2e2e; }
 </style>
 </head>
 <body>
@@ -76,7 +69,7 @@
     </div>
   </header>
 
-  <!-- Lista immagini / logo -->
+  <!-- Lista immagini -->
   <main>
     <div id="notice"></div>
     <div id="list"></div>
@@ -118,21 +111,11 @@
   scrim.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', e => { if(e.key === 'Escape') closeDrawer(); });
 
-  // close drawer when clicking a menu item (delegation)
-  $menu.addEventListener('click', (ev) => {
-    const a = ev.target.closest('a.item');
-    if (a) {
-      // let browser follow the link, and close drawer
-      closeDrawer();
-    }
-  });
-
   // Helpers
   const encSeg = s => encodeURIComponent(s).replace(/%2F/gi,'/');
   const toRawURL = relPath => `https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${CFG.branch}/${encSeg(CFG.basePath + '/' + relPath)}`;
   const extOf = name => (name.split('.').pop() || '').toLowerCase();
   const isImage = name => ALLOWED.includes(extOf(name));
-  const logoSrc = 'logo.png'; // relativo a index, come richiesto
 
   function qsWith(upd){
     const p = new URLSearchParams(location.search);
@@ -211,8 +194,8 @@
     $menu.innerHTML = html;
   }
 
-  function renderHeader(count, whereFolder){
-    const where = whereFolder ? ` in /${escapeHtml(whereFolder)}` : "";
+  function renderHeader(count){
+    const where = requestedFolder ? ` in /${escapeHtml(requestedFolder)}` : "";
     $summary.innerHTML = `— ${count} immagin${count===1?'':'i'}${where}`;
     // ordinamenti
     const link = (label, s, o) => {
@@ -224,25 +207,10 @@
     const nameDesc = link("Nome ↓", "name", "desc");
     const dateDesc = link("Più recenti", "date", "desc");
     const dateAsc  = link("Più vecchie", "date", "asc");
-    $sortLinks.innerHTML = [nameAsc, nameDesc, dateDesc, dateAsc].join(sep);
+
   }
 
   function renderList(files){
-    // If no folder selected, show single centered logo and hint to choose a folder
-    if (!requestedFolder) {
-      $list.innerHTML = `
-        <div class="center-wrap" role="region" aria-label="Logo galleria">
-          <img class="logo" src="${logoSrc}" alt="Logo galleria" />
-          <div class="hint">Scegli una cartella dal menu per vedere le immagini. </div>
-          <a class="open-menu" href="#" id="openMenuBtn">Apri cartelle</a>
-        </div>
-      `;
-      // hook button to open drawer
-      const btn = document.getElementById('openMenuBtn');
-      if (btn) btn.addEventListener('click', (e)=>{ e.preventDefault(); openDrawer(); });
-      return;
-    }
-
     if (!files.length) {
       $list.innerHTML = `<p>Nessuna immagine trovata${requestedFolder?` in <code>/${escapeHtml(requestedFolder)}</code>`:""}.</p>`;
       return;
@@ -284,17 +252,14 @@
     for (const it of all) counts[it.dir] = (counts[it.dir]||0) + 1;
     const folders = Object.keys(counts).filter(f => f !== "").sort((a,b)=> a.localeCompare(b, undefined, {numeric:true, sensitivity:"base"}));
 
-    // total images count across all folders
-    const totalImages = all.length;
-
     // valida folder richiesta
     if (requestedFolder && !folders.includes(requestedFolder)) requestedFolder = "";
 
     // filtro
     let visible = requestedFolder ? all.filter(f => f.dir === requestedFolder) : all.slice();
 
-    renderMenu(folders, counts, totalImages);
-    renderHeader(visible.length, requestedFolder);
+    renderMenu(folders, counts, visible.length);
+    renderHeader(visible.length);
 
     // ordina
     if (sort === "date" && visible.length) {
