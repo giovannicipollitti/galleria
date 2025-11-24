@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<title>Galleria</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root { --maxw: 900px; --bar:#151515; --bg:#111; --fg:#eee; --mut:#bbb; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui,-apple-system, Segoe UI, Roboto, Arial, sans-serif; background:var(--bg); color:var(--fg); }
+  header { position: sticky; top:0; z-index:3; background:#111c; backdrop-filter: blur(6px);
+           border-bottom:1px solid #333; padding:.6rem 1rem; display:flex; align-items:center; gap:.8rem; }
+  .wrap { max-width: var(--maxw); margin:0 auto; width:100%; display:flex; align-items:center; gap:.8rem; }
+  .brand { font-weight:700; }
+  .muted { color:var(--mut); font-size:.95rem; }
+  .spacer { flex:1 }
+  a, a:visited { color:#9fd1ff; text-decoration:none; }
+  a:hover { text-decoration: underline; }
+
+  .hamb { border:none; background:#232323; color:var(--fg); width:40px; height:40px; border-radius:10px; cursor:pointer; display:grid; place-items:center; }
+  .hamb:hover { background:#2e2e2e; }
+  .bars{display:block;width:20px;height:2px;background:var(--fg); position:relative;}
+  .bars::before,.bars::after{content:"";position:absolute;left:0;width:20px;height:2px;background:var(--fg);}
+  .bars::before{top:-6px}.bars::after{top:6px}
+
+  .drawer { position:fixed; inset:0 auto 0 0; width:280px; background:#121212; border-right:1px solid #2a2a2a;
+            transform: translateX(-100%); transition: transform .25s ease; z-index:4; display:flex; flex-direction:column; max-width:90vw; }
+  .drawer.open { transform: translateX(0); }
+  .drawer header { position: static; border-bottom:1px solid #2a2a2a; padding:.9rem 1rem; }
+  .menu { overflow:auto; padding:.5rem .5rem 1rem; }
+  .item { display:flex; align-items:center; gap:.5rem; padding:.5rem .7rem; border-radius:10px; color:#ddd; text-decoration:none; }
+  .item:hover { background:#1d1d1d; text-decoration:none; }
+  .item.active { background:#273445; color:#e8f3ff; }
+  .pill { margin-left:auto; font-size:.8rem; color:#ccc; }
+
+  main { max-width:var(--maxw); margin:1rem auto 3rem; padding:0 1rem; }
+  figure { margin:0 0 1rem; background:#181818; border:1px solid #2a2a2a; border-radius:12px; overflow:hidden; }
+  img { display:block; width:100%; height:auto; }
+  .bar { display:flex; justify-content:flex-end; gap:.5rem; padding:.6rem .8rem; border-top:1px solid #2a2a2a; background:var(--bar); }
+  .btn { border:1px solid #3a3a3a; background:#232323; color:#eee; padding:.45rem .8rem; border-radius:999px; cursor:pointer; text-decoration:none; font-size:.9rem; }
+  .btn:hover { background:#2e2e2e; }
+
+  .top { position:fixed; right:12px; bottom:12px; z-index:2; }
+  .top button { border:none; background:#2a2a2a; color:#eee; padding:.6rem .8rem; border-radius:999px; cursor:pointer; box-shadow:0 6px 20px #0008; }
+  .top button:hover { background:#3a3a3a; }
+
+  .scrim { position:fixed; inset:0; background:#0009; opacity:0; pointer-events:none; transition:opacity .25s ease; z-index:3; }
+  .scrim.show { opacity:1; pointer-events:auto; }
+
+  .warn { background:#3a2a00; color:#ffe2a6; border:1px solid #6b4e00; padding:.7rem .9rem; border-radius:10px; margin:1rem 0; }
+</style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside id="drawer" class="drawer" aria-hidden="true">
+    <header><strong>Cartelle</strong></header>
+    <nav id="menu" class="menu"></nav>
+  </aside>
+  <div id="scrim" class="scrim" role="presentation"></div>
+
+  <!-- Header -->
+  <header>
+    <div class="wrap">
+      <button id="hamb" class="hamb" aria-label="Apri menu" aria-expanded="false" aria-controls="drawer"><span class="bars"></span></button>
+      <div class="brand">Galleria</div>
+      <div id="summary" class="muted">— caricamento…</div>
+      <div class="spacer"></div>
+      <div class="muted" id="sortLinks"></div>
+    </div>
+  </header>
+
+  <!-- Lista immagini -->
+  <main>
+    <div id="notice"></div>
+    <div id="list"></div>
+  </main>
+
+  <div class="top"><button onclick="window.scrollTo({top:0, behavior:'smooth'})">Torna su ↑</button></div>
+
+<script>
+(() => {
+  // =========================
+  // CONFIGURAZIONE GITHUB
+  // =========================
+  const CFG = {
+    owner: "giovannicipollitti",
+    repo:  "galleria",
+    branch:"main",
+    basePath: "images"          // cartella radice delle immagini nel repo
+  };
+
+  const ALLOWED = ["jpg","jpeg","png","gif","webp","avif"];
+  const qs = new URLSearchParams(location.search);
+  const sort  = (qs.get("sort")  || "name").toLowerCase();   // "name" | "date"
+  const order = (qs.get("order") || "asc").toLowerCase();    // "asc"  | "desc"
+  let requestedFolder = (qs.get("folder") || "").replace(/\\/g,"/").replace(/^\/+|\/+$/g,"");
+
+  const $menu = document.getElementById("menu");
+  const $list = document.getElementById("list");
+  const $summary = document.getElementById("summary");
+  const $sortLinks = document.getElementById("sortLinks");
+  const $notice = document.getElementById("notice");
+
+  // UI Drawer
+  const drawer = document.getElementById('drawer');
+  const scrim  = document.getElementById('scrim');
+  const hamb   = document.getElementById('hamb');
+  function openDrawer(){ drawer.classList.add('open'); scrim.classList.add('show'); hamb.setAttribute('aria-expanded','true'); }
+  function closeDrawer(){ drawer.classList.remove('open'); scrim.classList.remove('show'); hamb.setAttribute('aria-expanded','false'); }
+  hamb.addEventListener('click', ()=> drawer.classList.contains('open') ? closeDrawer() : openDrawer());
+  scrim.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeDrawer(); });
+
+  // Helpers
+  const encSeg = s => encodeURIComponent(s).replace(/%2F/gi,'/');
+  const toRawURL = relPath => `https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${CFG.branch}/${encSeg(CFG.basePath + '/' + relPath)}`;
+  const extOf = name => (name.split('.').pop() || '').toLowerCase();
+  const isImage = name => ALLOWED.includes(extOf(name));
+
+  function qsWith(upd){
+    const p = new URLSearchParams(location.search);
+    for (const [k,v] of Object.entries(upd)) {
+      if (v === null || v === undefined || v === "") p.delete(k);
+      else p.set(k, v);
+    }
+    const s = p.toString();
+    return s ? `?${s}` : location.pathname;
+  }
+
+  function setNotice(html){
+    $notice.innerHTML = html ? `<div class="warn">${html}</div>` : "";
+  }
+
+  // GitHub API: lista ricorsiva contenuti sotto basePath
+  async function listImagesFromGitHub(){
+    const base = `https://api.github.com/repos/${CFG.owner}/${CFG.repo}/contents/${encSeg(CFG.basePath)}?ref=${encodeURIComponent(CFG.branch)}`;
+
+    // BFS directory traversal
+    const queue = [{url: base, dir: ""}];
+    const out = [];
+    while (queue.length) {
+      const {url, dir} = queue.shift();
+      let items;
+      try {
+        const res = await fetch(url, {headers:{'Accept':'application/vnd.github+json'}});
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        items = await res.json();
+        if (!Array.isArray(items)) continue;
+      } catch (e) {
+        setNotice(`Impossibile leggere i contenuti GitHub (${e.message}). Verifica repo/branch/cartella.`);
+        return out;
+      }
+      for (const it of items) {
+        if (it.type === "dir") {
+          const nextUrl = `https://api.github.com/repos/${CFG.owner}/${CFG.repo}/contents/${encSeg(CFG.basePath + "/" + (dir?dir+"/":"") + it.name)}?ref=${encodeURIComponent(CFG.branch)}`;
+          queue.push({url: nextUrl, dir: (dir?dir+"/":"") + it.name});
+        } else if (it.type === "file" && isImage(it.name)) {
+          const rel = (dir?dir+"/":"") + it.name; // relativo a images/
+          out.push({ rel, dir, name: it.name, mtime: null }); // mtime lo stimiamo dopo
+        }
+      }
+    }
+    return out;
+  }
+
+  // Stima mtime via HEAD Last-Modified sul raw URL (concurrency limit)
+  async function fillMtimes(files, concurrency=6){
+    let i = 0;
+    async function worker(){
+      while (i < files.length) {
+        const idx = i++;
+        const f = files[idx];
+        try {
+          const res = await fetch(toRawURL(f.rel), { method: "HEAD", cache: "no-cache" });
+          const lm = res.headers.get("Last-Modified");
+          f.mtime = lm ? new Date(lm).getTime() : 0;
+        } catch { f.mtime = 0; }
+      }
+    }
+    await Promise.all(Array.from({length: Math.min(concurrency, files.length)}, worker));
+    return files;
+  }
+
+  function renderMenu(folders, counts, total){
+    const mkLink = (label, folder, active, pill) => {
+      const href = qsWith({ folder: folder || null });
+      return `<a class="item ${active?'active':''}" href="${href}">${label} <span class="pill">${pill}</span></a>`;
+    };
+    let html = "";
+    html += mkLink("📁 Tutte le foto", "", requestedFolder==="", total);
+    for (const f of folders) {
+      html += mkLink("📂 " + escapeHtml(f), f, f===requestedFolder, counts[f]||0);
+    }
+    $menu.innerHTML = html;
+  }
+
+  function renderHeader(count){
+    const where = requestedFolder ? ` in /${escapeHtml(requestedFolder)}` : "";
+    $summary.innerHTML = `— ${count} immagin${count===1?'':'i'}${where}`;
+    // ordinamenti
+    const link = (label, s, o) => {
+      const href = qsWith({ sort: s, order: o });
+      return `<a href="${href}">${label}</a>`;
+    };
+    const sep = ' · ';
+    const nameAsc  = link("Nome ↑", "name", "asc");
+    const nameDesc = link("Nome ↓", "name", "desc");
+    const dateDesc = link("Più recenti", "date", "desc");
+    const dateAsc  = link("Più vecchie", "date", "asc");
+
+  }
+
+  function renderList(files){
+    if (!files.length) {
+      $list.innerHTML = `<p>Nessuna immagine trovata${requestedFolder?` in <code>/${escapeHtml(requestedFolder)}</code>`:""}.</p>`;
+      return;
+    }
+    const buf = [];
+    for (const f of files) {
+      const src = toRawURL(f.rel);
+      const fname = f.name;
+      buf.push(
+        `<figure>
+          <img src="${src}" alt="" loading="lazy" decoding="async" />
+          <div class="bar">
+            <a class="btn" href="${src}" download="${escapeAttr(fname)}">Scarica</a>
+          </div>
+        </figure>`
+      );
+    }
+    $list.innerHTML = buf.join("\n");
+  }
+
+  function escapeHtml(s){ return s.replace(/[&<>"']/g, m=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m])); }
+  function escapeAttr(s){ return s.replace(/"/g,'&quot;'); }
+
+  function cmp(a,b){
+    let v;
+    if (sort === "date") {
+      v = (a.mtime||0) - (b.mtime||0);
+    } else {
+      v = a.rel.localeCompare(b.rel, undefined, { numeric:true, sensitivity:"base" });
+    }
+    return (order === "asc") ? v : -v;
+  }
+
+  (async function main(){
+    const all = await listImagesFromGitHub();
+
+    // folders & counts
+    const counts = {};
+    for (const it of all) counts[it.dir] = (counts[it.dir]||0) + 1;
+    const folders = Object.keys(counts).filter(f => f !== "").sort((a,b)=> a.localeCompare(b, undefined, {numeric:true, sensitivity:"base"}));
+
+    // valida folder richiesta
+    if (requestedFolder && !folders.includes(requestedFolder)) requestedFolder = "";
+
+    // filtro
+    let visible = requestedFolder ? all.filter(f => f.dir === requestedFolder) : all.slice();
+
+    renderMenu(folders, counts, visible.length);
+    renderHeader(visible.length);
+
+    // ordina
+    if (sort === "date" && visible.length) {
+      await fillMtimes(visible);
+    }
+    visible.sort(cmp);
+
+    renderList(visible);
+  })();
+})();
+</script>
+</body>
+</html>
